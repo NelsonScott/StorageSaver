@@ -1,0 +1,45 @@
+{
+  "name": "storagesaver",
+  "version": "0.1.0",
+  "description": "Read-only Mac disk usage explorer with plain-English AI explanations and built-in safety knowledge. Scan, understand, reclaim.",
+  "bin": {
+    "storagesaver": "bin/storagesaver.js"
+  },
+  "main": "src/scan.js",
+  "scripts": {
+    "scan": "node bin/storagesaver.js scan",
+    "test": "node --check bin/storagesaver.js && node --check src/scan.js && node --check src/classify.js && node --check src/notes.js && node --check src/annotate.js && node --check skill/watcher.js"
+  },
+  "keywords": [
+    "disk-usage",
+    "storage",
+    "macos",
+    "disk-space",
+    "sunburst",
+    "cleanup",
+    "diskmap",
+    "llm",
+    "ollama"
+  ],
+  "author": "Scott Nelson",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NelsonScott/StorageSaver.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NelsonScott/StorageSaver/issues"
+  },
+  "homepage": "https://github.com/NelsonScott/StorageSaver#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "skill/",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {}
+}
