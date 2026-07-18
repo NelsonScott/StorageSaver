@@ -1,6 +1,6 @@
 {
   "name": "storagesaver",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Read-only Mac disk usage explorer with plain-English AI explanations and built-in safety knowledge. Scan, understand, reclaim.",
   "bin": {
     "storagesaver": "bin/storagesaver.js"

@@ -127,6 +127,20 @@ function classify(lp, name, isDir, absPath) {
     return { b: 'safe', note: 'leftover temp clones of Chrome.app made during updates — they pile up forever; stale ones are safe to delete',
              cmd: `find ${esc(p)} -mindepth 1 -maxdepth 1 -type d -mtime +1 -exec rm -rf {} +` };
   }
+  // Chrome's on-device AI model (Gemini Nano) — often 3-5 GB, re-downloads if you
+  // use Chrome's built-in AI features (2026-07 lesson: a lone 4 GB dir hiding in
+  // Application Support). Basename rule so it matches wherever Chrome parks it.
+  if (base === 'OptGuideOnDeviceModel') return { b: 'safe', note: 'Chrome on-device AI model (Gemini Nano) — often several GB; Chrome re-downloads it if you use its AI features', cmd: `rm -rf ${esc(p)}` };
+  // Python virtualenvs stores (pipenv/poetry/virtualenvwrapper). 2026-07 lesson:
+  // 7.5 GB of these in ~/.local/share/virtualenvs alone — each bundles its own
+  // PyTorch/numpy. Regenerable, and the #1 thing a node_modules-only scan misses.
+  if (lp === `${H}/.local/share/virtualenvs` || lp.startsWith(`${H}/.local/share/virtualenvs/`) ||
+      lp === `${H}/.virtualenvs` || lp.startsWith(`${H}/.virtualenvs/`))
+    return { b: 'safe', note: 'Python virtualenv store — often GBs (each env bundles its own PyTorch etc.); recreate with `pipenv install` / `poetry install`', cmd: `rm -rf ${esc(p)}` };
+  // iOS Simulator runtime disk images live OUTSIDE ~/ and are root-owned (2026-07:
+  // 6.8 GB). Xcode re-downloads them; only worth it if you do no iOS dev.
+  if (lp === '/Library/Developer/CoreSimulator/Images')
+    return { b: 'safe', note: 'iOS Simulator runtime disk images (root-owned, ~GBs) — no iOS dev? remove with sudo; Xcode re-downloads on demand', cmd: `sudo rm -rf ${esc(p)}` };
   if (lp.startsWith(`${H}/Library/Caches/`)) {
     // com.apple.* caches are system-managed — call those review, the rest safe.
     const top = lp.slice(`${H}/Library/Caches/`.length).split('/')[0];
@@ -149,6 +163,7 @@ function classify(lp, name, isDir, absPath) {
   if (lp === `${H}/Library/Application Support`) return { b: 'review', note: 'app data — check per app; orphans from uninstalled apps are common' };
   if (lp === `${H}/Library/Containers` || lp === `${H}/Library/Group Containers`) return { b: 'review', note: 'sandboxed app data — deleting resets those apps' };
   if (lp === `${H}/Downloads`) return { b: 'review', note: 'review manually — often full of old installers' };
+  if (lp === '/Library/Updates') return { b: 'review', note: 'staged macOS update installers — reclaimed automatically once you INSTALL the pending update (which also clears its os-update snapshots)' };
   if (lp === '/private/var/folders') return { b: 'review', note: 'per-user temp/caches — macOS cleans these; reboot clears most' };
   if (lp === '/private/var/log') return { b: 'review', note: 'system logs — mostly rotated automatically' };
   if (lp === '/Library/Caches') return { b: 'review', note: 'system-wide caches — regenerate, but clearing needs sudo' };
