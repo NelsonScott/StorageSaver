@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StorageSaver — disk usage explorer</title>
+<style>
+/* ============================== THEME ============================== */
+#root{display:contents}
+:root{
+  --bg:#f4f4f6; --panel:#ffffff; --text:#1c1c1f; --muted:#71717a;
+  --border:#e4e4e9; --hl:#eef1f6; --sel:#dfe7f5; --accent:#3b6fd4;
+  --bar-bg:#ececf1; --tooltip-bg:#26262b; --tooltip-text:#f4f4f6;
+  --safe:#2e9e5b; --safe-bg:rgba(46,158,91,.10);
+  --review:#c98a12; --review-bg:rgba(201,138,18,.12);
+  --never:#d0453c; --never-bg:rgba(208,69,60,.10);
+  --unread:#9a9aa2; --center-fill:#ffffff; --slice-stroke:#f4f4f6;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#151518; --panel:#1e1e22; --text:#ececef; --muted:#8f8f98;
+    --border:#2c2c32; --hl:#26262d; --sel:#2b3650; --accent:#7ea6f2;
+    --bar-bg:#2a2a30; --tooltip-bg:#0c0c0e; --tooltip-text:#ececef;
+    --safe:#4cc47e; --safe-bg:rgba(76,196,126,.12);
+    --review:#e2a93c; --review-bg:rgba(226,169,60,.14);
+    --never:#ef6d64; --never-bg:rgba(239,109,100,.12);
+    --unread:#6e6e78; --center-fill:#1e1e22; --slice-stroke:#151518;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151518; --panel:#1e1e22; --text:#ececef; --muted:#8f8f98;
+  --border:#2c2c32; --hl:#26262d; --sel:#2b3650; --accent:#7ea6f2;
+  --bar-bg:#2a2a30; --tooltip-bg:#0c0c0e; --tooltip-text:#ececef;
+  --safe:#4cc47e; --safe-bg:rgba(76,196,126,.12);
+  --review:#e2a93c; --review-bg:rgba(226,169,60,.14);
+  --never:#ef6d64; --never-bg:rgba(239,109,100,.12);
+  --unread:#6e6e78; --center-fill:#1e1e22; --slice-stroke:#151518;
+}
+
+/* ============================== BASE ============================== */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font:14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  display:flex; flex-direction:column;
+}
+a{color:var(--accent)} a:hover{color:var(--accent); text-decoration:underline}
+button{font:inherit; color:inherit}
+
+/* ============================== HEADER ============================== */
+header{
+  display:flex; align-items:center; flex-wrap:wrap; gap:10px 22px;
+  padding:12px 18px; background:var(--panel); border-bottom:1px solid var(--border);
+}
+.brand{display:flex; align-items:baseline; gap:10px}
+.brand h1{font-size:17px; margin:0; letter-spacing:-.01em}
+.brand .ts{color:var(--muted); font-size:12px}
+.stats{display:flex; gap:18px; flex-wrap:wrap}
+.stat{display:flex; flex-direction:column; gap:1px; min-width:64px}
+.stat .k{font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted)}
+.stat .v{font-size:14px; font-variant-numeric:tabular-nums; font-weight:600}
+.spacer{flex:1}
+.search{position:relative; display:flex; align-items:center}
+.search input{
+  width:250px; padding:6px 10px 6px 28px; border:1px solid var(--border); border-radius:7px;
+  background:var(--bg); color:var(--text); outline:none; font-size:13px;
+}
+.search input:focus{border-color:var(--accent)}
+.search .icon{position:absolute; left:9px; color:var(--muted); pointer-events:none; font-size:12px}
+.themeBtn{
+  border:1px solid var(--border); background:var(--panel); border-radius:7px;
+  padding:6px 10px; cursor:pointer; font-size:12px; color:var(--muted);
+}
+.themeBtn:hover{background:var(--hl)}
+
+/* ============================== ANNOTATE PANEL ============================== */
+.annotateWrap{position:relative}
+.annotateBtn{
+  border:1px solid var(--border); background:var(--panel); border-radius:7px;
+  padding:6px 10px; cursor:pointer; font-size:12px; color:var(--muted);
+}
+.annotateBtn:hover{background:var(--hl)}
+.annotateBtn.active{color:var(--accent); border-color:var(--accent)}
+#annotatePanel{
+  display:none; position:absolute; right:0; top:calc(100% + 6px); z-index:40;
+  width:300px; background:var(--panel); border:1px solid var(--border); border-radius:10px;
+  box-shadow:0 10px 30px rgba(0,0,0,.18); padding:12px; font-size:12.5px;
+}
+#annotatePanel.open{display:block}
+#annotatePanel .apIntro{margin:0 0 10px; color:var(--muted); font-size:11.5px; line-height:1.5}
+#annotatePanel .apRow{display:flex; flex-direction:column; gap:3px; margin-bottom:9px}
+#annotatePanel label{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em}
+#annotatePanel input, #annotatePanel select{
+  padding:6px 8px; border:1px solid var(--border); border-radius:6px;
+  background:var(--bg); color:var(--text); outline:none; font-size:12.5px; width:100%;
+}
+#annotatePanel select{cursor:pointer}
+#annotatePanel input:focus, #annotatePanel select:focus{border-color:var(--accent)}
+#annotatePanel .apHint{color:var(--muted); font-size:10.5px; margin-top:2px}
+#annotatePanel .apGo{
+  width:100%; border:1px solid var(--accent); background:var(--accent); color:#fff;
+  border-radius:7px; padding:7px 10px; cursor:pointer; font-size:12.5px; font-weight:600;
+}
+#annotatePanel .apGo:hover{filter:brightness(1.06)}
+#annotatePanel .apGo:disabled{opacity:.55; cursor:default}
+#annotatePanel .apStatus{margin-top:8px; color:var(--muted); font-size:11.5px; line-height:1.5; word-break:break-word}
+#annotatePanel .apStatus code{
+  display:block; margin-top:4px; padding:5px 7px; background:var(--bg); border:1px solid var(--border);
+  border-radius:6px; font:11px ui-monospace, SFMono-Regular, Menlo, monospace; user-select:all; white-space:pre-wrap;
+}
+
+/* ============================== MAIN LAYOUT ============================== */
+main{flex:1; display:flex; gap:14px; padding:14px; min-height:0}
+.pane{
+  background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  display:flex; flex-direction:column; min-width:0; min-height:0; overflow:hidden;
+}
+#sunPane{flex:11}
+#treePane{flex:10}
+@media (max-width: 980px){
+  main{flex-direction:column; overflow:auto}
+  #sunPane,#treePane{flex:none}
+  #sunPane{min-height:520px}
+  #treePane{min-height:420px}
+}
+
+/* ============================== SUNBURST ============================== */
+.crumbs{
+  display:flex; align-items:center; gap:4px; flex-wrap:wrap;
+  padding:10px 14px; border-bottom:1px solid var(--border); font-size:12.5px; min-height:41px;
+}
+.crumb{
+  border:0; background:none; padding:3px 7px; border-radius:6px; cursor:pointer;
+  color:var(--accent); white-space:nowrap;
+}
+.crumb:hover{background:var(--hl)}
+.crumb.cur{color:var(--text); font-weight:600; cursor:default}
+.crumb.cur:hover{background:none}
+.crumbSep{color:var(--muted)}
+#sunWrap{flex:1; display:flex; align-items:center; justify-content:center; min-height:0; padding:8px}
+#sun{width:100%; height:100%; max-width:660px; max-height:660px; display:block}
+.slice{stroke:var(--slice-stroke); stroke-width:1.5; cursor:pointer; transition:opacity .18s, filter .12s}
+.slice:hover, .slice.hl{filter:brightness(1.12); stroke-width:2}
+.slice.dim{opacity:.16}
+.slice.smallmerge{cursor:default}
+#centerG{cursor:pointer}
+#centerCircle{fill:var(--center-fill); stroke:var(--border); stroke-width:1.5}
+#centerG:hover #centerCircle{fill:var(--hl)}
+#centerName{fill:var(--text); font-weight:700; font-size:19px}
+#centerSize{fill:var(--text); font-size:15px; font-variant-numeric:tabular-nums}
+#centerPct,#centerHint{fill:var(--muted); font-size:11px}
+#rings.pop{animation:sunin .28s ease-out}
+#rings{transform-origin:320px 320px}
+@keyframes sunin{from{opacity:.25; transform:scale(.86)} to{opacity:1; transform:scale(1)}}
+
+/* ============================== TREE ============================== */
+.treeHead{
+  display:flex; align-items:center; gap:10px; padding:10px 14px;
+  border-bottom:1px solid var(--border); font-size:11px; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.06em;
+}
+.treeHead .thName{flex:1}
+.treeHead .thBar{width:118px}
+.treeHead .thPct{width:46px; text-align:right}
+.treeHead .thSize{width:66px; text-align:right}
+#tree{flex:1; overflow:auto; padding:6px 6px 24px; outline:none}
+.row{
+  display:flex; align-items:center; gap:7px; padding:3px 8px 3px 4px;
+  border-radius:7px; cursor:default; user-select:none; min-height:28px;
+}
+.row:hover{background:var(--hl)}
+.row.sel{background:var(--sel)}
+.row.hiddenBySearch{display:none}
+.row.b-safe{box-shadow:inset 3px 0 0 var(--safe); background:linear-gradient(to right, var(--safe-bg), transparent 55%)}
+.row.b-safe:hover{background:var(--hl)}
+.row.b-safe.sel{background:var(--sel)}
+.tw{
+  width:18px; text-align:center; color:var(--muted); font-size:10px; cursor:pointer;
+  flex:none; transition:transform .12s; display:inline-block;
+}
+.tw.open{transform:rotate(90deg)}
+.tw.leaf{visibility:hidden}
+.nname{
+  flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  cursor:pointer; display:flex; align-items:center; gap:7px;
+}
+.nname .fico{color:var(--muted); font-size:12px; flex:none}
+.row.unreadable .nname{color:var(--muted); font-style:italic}
+.row.unreadable{
+  background-image:repeating-linear-gradient(45deg, transparent 0 6px, rgba(128,128,140,.10) 6px 12px);
+}
+.chip{
+  flex:none; font-size:10px; font-weight:600; padding:1px 7px; border-radius:999px;
+  letter-spacing:.03em;
+}
+.chip.safe{color:var(--safe); background:var(--safe-bg)}
+.chip.review{color:var(--review); background:var(--review-bg)}
+.chip.never{color:var(--never); background:var(--never-bg)}
+.chip.unread{color:var(--unread); background:rgba(128,128,140,.12)}
+.copyBtn{
+  flex:none; border:0; background:none; cursor:pointer; color:var(--muted);
+  border-radius:5px; padding:1px 5px; font-size:13px;
+}
+.copyBtn:hover{color:var(--safe); background:var(--safe-bg)}
+.bar{flex:none; width:118px; height:8px; background:var(--bar-bg); border-radius:4px; overflow:hidden}
+.bar i{display:block; height:100%; background:var(--accent); border-radius:4px; min-width:1px}
+.row.b-safe .bar i{background:var(--safe)}
+.row.b-review .bar i{background:var(--review)}
+.row.b-never .bar i{background:var(--never)}
+.row.unreadable .bar i{background:repeating-linear-gradient(45deg, var(--unread) 0 4px, transparent 4px 8px)}
+.pctL{flex:none; width:46px; text-align:right; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums}
+.sizeL{flex:none; width:66px; text-align:right; font-variant-numeric:tabular-nums; font-size:12.5px}
+.kids{margin:0}
+.kids.closed{display:none}
+.moreRow{
+  color:var(--accent); font-size:12.5px; padding:4px 8px; cursor:pointer; border-radius:7px;
+}
+.moreRow:hover{background:var(--hl)}
+
+/* ============================== TOOLTIP / TOAST ============================== */
+#tip{
+  position:fixed; z-index:50; pointer-events:none; display:none; max-width:380px;
+  background:var(--tooltip-bg); color:var(--tooltip-text); border-radius:8px;
+  padding:8px 11px; font-size:12px; line-height:1.5; box-shadow:0 6px 24px rgba(0,0,0,.25);
+}
+#tip .tpath{font-weight:600; word-break:break-all}
+#tip .tnote{color:#b9d8a9; margin-top:3px}
+#tip .tnote.never{color:#f2a9a4}
+#tip .tnote.review{color:#f0cd8a}
+#tip .tmeta{opacity:.85; font-variant-numeric:tabular-nums}
+#toast{
+  position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
+  background:var(--tooltip-bg); color:var(--tooltip-text); padding:9px 16px;
+  border-radius:8px; font-size:13px; opacity:0; transition:opacity .2s, transform .2s;
+  pointer-events:none; z-index:60; box-shadow:0 6px 24px rgba(0,0,0,.3);
+}
+#toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+kbd{
+  font:11px ui-monospace, SFMono-Regular, Menlo, monospace; background:var(--hl);
+  border:1px solid var(--border); border-radius:4px; padding:0 4px;
+}
+.hint{color:var(--muted); font-size:11.5px; padding:6px 14px; border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<!-- STORAGESAVER_DATA_START -->
+<script id="storagesaver-data">
+window.STORAGESAVER_DATA = {
+  generatedAt: "2026-07-12T18:00:00Z",
+  disk: { totalBytes: 245107195904, usedBytes: 187312406528, freeBytes: 57794789376, percentUsed: 76.4 },
+  root: {
+    n: "Data", p: "/System/Volumes/Data", s: 169900000000, t: "dir", b: null, cmd: null, note: null, c: [
+    { n: "Users", p: "/System/Volumes/Data/Users", s: 122500000000, t: "dir", b: null, cmd: null, note: null, c: [
+      { n: "alex", p: "/System/Volumes/Data/Users/alex", s: 122200000000, t: "dir", b: null, cmd: null, note: null, c: [
+        { n: "Library", p: "/System/Volumes/Data/Users/alex/Library", s: 50400000000, t: "dir", b: null, cmd: null, note: null, c: [
+          { n: "Application Support", p: "/System/Volumes/Data/Users/alex/Library/Application Support", s: 21800000000, t: "dir", b: "review", cmd: null, note: "app data — check per app before deleting", c: [
+            { n: "Google", p: "/System/Volumes/Data/Users/alex/Library/Application Support/Google", s: 6200000000, t: "dir", b: "review", cmd: null, note: "Chrome profiles and app data", c: null },
+            { n: "MobileSync", p: "/System/Volumes/Data/Users/alex/Library/Application Support/MobileSync", s: 5400000000, t: "dir", b: "review", cmd: null, note: "iPhone/iPad backups — delete via Finder device manager", c: null },
+            { n: "Steam", p: "/System/Volumes/Data/Users/alex/Library/Application Support/Steam", s: 4200000000, t: "dir", b: "review", cmd: null, note: "game installs — uninstall via Steam", c: null },
+            { n: "Slack", p: "/System/Volumes/Data/Users/alex/Library/Application Support/Slack", s: 2100000000, t: "dir", b: "review", cmd: null, note: "workspace cache and data", c: null },
+            { n: "(other, 84 items)", p: "/System/Volumes/Data/Users/alex/Library/Application Support", s: 3900000000, t: "dir", b: null, cmd: null, note: null, c: null }
+          ]},
+          { n: "Caches", p: "/System/Volumes/Data/Users/alex/Library/Caches", s: 11900000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Users/alex/Library/Caches'", note: "user caches, apps regenerate them", c: [
+            { n: "com.apple.WebKit", p: "/System/Volumes/Data/Users/alex/Library/Caches/com.apple.WebKit", s: 2100000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Users/alex/Library/Caches/com.apple.WebKit'", note: "Safari/WebKit cache, regenerates", c: null },
+            { n: "com.spotify.client", p: "/System/Volumes/Data/Users/alex/Library/Caches/com.spotify.client", s: 1800000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Users/alex/Library/Caches/com.spotify.client'", note: "Spotify song cache, regenerates", c: null },
+            { n: "Google", p: "/System/Volumes/Data/Users/alex/Library/Caches/Google", s: 1600000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Users/alex/Library/Caches/Google'", note: "Chrome cache, regenerates", c: null },
+            { n: "pip", p: "/System/Volumes/Data/Users/alex/Library/Caches/pip", s: 1200000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Users/alex/Library/Caches/pip'", note: "Python package cache, regenerates", c: null },
+            { n: "(other, 143 items)", p: "/System/Volumes/Data/Users/alex/Library/Caches", s: 5200000000, t: "dir", b: "safe", cmd: null, note: null, c: null }
+          ]},
+          { n: "Developer", p: "/System/Volumes/Data/Users/alex/Library/Developer", s: 9800000000, t: "dir", b: null, cmd: null, note: null, c: [
+            { n: "Xcode", p: "/System/Volumes/Data/Users/alex/Library/Developer/Xcode", s: 6400000000, t: "dir", b: null, cmd: null, note: null, c: [
+              { n: "DerivedData", p: "/System/Volumes/Data/Users/alex/Library/Developer/Xcode/DerivedData", s: 5300000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Users/alex/Library/Developer/Xcode/DerivedData'", note: "Xcode build artifacts, regenerate on next build", c: null },
+              { n: "iOS DeviceSupport", p: "/System/Volumes/Data/Users/alex/Library/Developer/Xcode/iOS DeviceSupport", s: 1100000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Users/alex/Library/Developer/Xcode/iOS DeviceSupport'", note: "device debug symbols, re-download on connect", c: null }
+            ]},
+            { n: "CoreSimulator", p: "/System/Volumes/Data/Users/alex/Library/Developer/CoreSimulator", s: 2900000000, t: "dir", b: "review", cmd: null, note: "simulator devices — prune with `xcrun simctl delete unavailable`", c: null },
+            { n: "(other, 12 items)", p: "/System/Volumes/Data/Users/alex/Library/Developer", s: 500000000, t: "dir", b: null, cmd: null, note: null, c: null }
+          ]},
+          { n: "Messages", p: "/System/Volumes/Data/Users/alex/Library/Messages", s: 3400000000, t: "dir", b: "never", cmd: null, note: "your iMessage history and attachments — deleting loses conversations", c: null },
+          { n: "CloudStorage", p: "/System/Volumes/Data/Users/alex/Library/CloudStorage", s: 1600000000, t: "dir", b: "never", cmd: null, note: "cloud drive placeholders — deleting removes files from the cloud too", c: null },
+          { n: "Containers", p: "/System/Volumes/Data/Users/alex/Library/Containers", s: 1400000000, t: "dir", b: "review", cmd: null, note: "sandboxed app data — deleting resets those apps", c: null },
+          { n: "(other, 61 items)", p: "/System/Volumes/Data/Users/alex/Library", s: 500000000, t: "dir", b: null, cmd: null, note: null, c: null }
+        ]},
+        { n: "Movies", p: "/System/Volumes/Data/Users/alex/Movies", s: 24300000000, t: "dir", b: null, cmd: null, note: null, c: [
+          { n: "trip-japan-4k.mov", p: "/System/Volumes/Data/Users/alex/Movies/trip-japan-4k.mov", s: 9800000000, t: "file", b: null, cmd: null, note: null },
+          { n: "Screen Recordings", p: "/System/Volumes/Data/Users/alex/Movies/Screen Recordings", s: 7600000000, t: "dir", b: "review", cmd: null, note: "old screen recordings — likely deletable, but yours to judge", c: null },
+          { n: "wedding-edit-v3.mp4", p: "/System/Volumes/Data/Users/alex/Movies/wedding-edit-v3.mp4", s: 4700000000, t: "file", b: null, cmd: null, note: null },
+          { n: "(other, 17 items)", p: "/System/Volumes/Data/Users/alex/Movies", s: 2200000000, t: "dir", b: null, cmd: null, note: null, c: null }
+        ]},
+        { n: "Pictures", p: "/System/Volumes/Data/Users/alex/Pictures", s: 17800000000, t: "dir", b: null, cmd: null, note: null, c: [
+          { n: "Photos Library.photoslibrary", p: "/System/Volumes/Data/Users/alex/Pictures/Photos Library.photoslibrary", s: 16900000000, t: "dir", b: "never", cmd: null, note: "managed by Photos — free space inside the Photos app, never in Finder", c: null },
+          { n: "(other, 9 items)", p: "/System/Volumes/Data/Users/alex/Pictures", s: 900000000, t: "dir", b: null, cmd: null, note: null, c: null }
+        ]},
+        { n: "code", p: "/System/Volumes/Data/Users/alex/code", s: 12600000000, t: "dir", b: null, cmd: null, note: null, c: [
+          { n: "webapp", p: "/System/Volumes/Data/Users/alex/code/webapp", s: 6100000000, t: "dir", b: null, cmd: null, note: null, c: [
+            { n: "node_modules", p: "/System/Volumes/Data/Users/alex/code/webapp/node_modules", s: 4800000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Users/alex/code/webapp/node_modules'", note: "npm dependencies, `npm install` restores them", c: null },
+            { n: ".next", p: "/System/Volumes/Data/Users/alex/code/webapp/.next", s: 900000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Users/alex/code/webapp/.next'", note: "build output, regenerates", c: null },
+            { n: "(other, 31 items)", p: "/System/Volumes/Data/Users/alex/code/webapp", s: 400000000, t: "dir", b: null, cmd: null, note: null, c: null }
+          ]},
+          { n: "ml-experiments", p: "/System/Volumes/Data/Users/alex/code/ml-experiments", s: 4300000000, t: "dir", b: null, cmd: null, note: null, c: [
+            { n: ".venv", p: "/System/Volumes/Data/Users/alex/code/ml-experiments/.venv", s: 2600000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Users/alex/code/ml-experiments/.venv'", note: "Python virtualenv, recreate with pip", c: null },
+            { n: "datasets", p: "/System/Volumes/Data/Users/alex/code/ml-experiments/datasets", s: 1500000000, t: "dir", b: "review", cmd: null, note: "downloaded datasets — re-downloadable if sources still exist", c: null },
+            { n: "(other, 14 items)", p: "/System/Volumes/Data/Users/alex/code/ml-experiments", s: 200000000, t: "dir", b: null, cmd: null, note: null, c: null }
+          ]},
+          { n: "(other, 22 items)", p: "/System/Volumes/Data/Users/alex/code", s: 2200000000, t: "dir", b: null, cmd: null, note: null, c: null }
+        ]},
+        { n: "Downloads", p: "/System/Volumes/Data/Users/alex/Downloads", s: 8700000000, t: "dir", b: "review", cmd: null, note: "review and delete manually — often full of old installers", c: [
+          { n: "Xcode_15.4.xip", p: "/System/Volumes/Data/Users/alex/Downloads/Xcode_15.4.xip", s: 3300000000, t: "file", b: "review", cmd: null, note: "installer archive, deletable if Xcode is installed", c: null },
+          { n: "macOS Sequoia beta.dmg", p: "/System/Volumes/Data/Users/alex/Downloads/macOS Sequoia beta.dmg", s: 2400000000, t: "file", b: "review", cmd: null, note: "old installer image", c: null },
+          { n: "(other, 96 items)", p: "/System/Volumes/Data/Users/alex/Downloads", s: 3000000000, t: "dir", b: null, cmd: null, note: null, c: null }
+        ]},
+        { n: "Documents", p: "/System/Volumes/Data/Users/alex/Documents", s: 6400000000, t: "dir", b: null, cmd: null, note: null, c: [
+          { n: "Parallels", p: "/System/Volumes/Data/Users/alex/Documents/Parallels", s: 4100000000, t: "dir", b: "review", cmd: null, note: "virtual machine disks", c: null },
+          { n: "(other, 210 items)", p: "/System/Volumes/Data/Users/alex/Documents", s: 2300000000, t: "dir", b: null, cmd: null, note: null, c: null }
+        ]},
+        { n: ".npm", p: "/System/Volumes/Data/Users/alex/.npm", s: 1100000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Users/alex/.npm'", note: "npm cache, regenerates", c: null },
+        { n: ".cache", p: "/System/Volumes/Data/Users/alex/.cache", s: 900000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Users/alex/.cache'", note: "tool caches (huggingface, pre-commit…), regenerate", c: null }
+      ]},
+      { n: "Shared", p: "/System/Volumes/Data/Users/Shared", s: 300000000, t: "dir", b: null, cmd: null, note: null, c: null }
+    ]},
+    { n: "Applications", p: "/System/Volumes/Data/Applications", s: 18400000000, t: "dir", b: null, cmd: null, note: null, c: [
+      { n: "Xcode.app", p: "/System/Volumes/Data/Applications/Xcode.app", s: 12100000000, t: "dir", b: "review", cmd: null, note: "reinstallable from the App Store, but a big download", c: null },
+      { n: "Adobe Photoshop 2026", p: "/System/Volumes/Data/Applications/Adobe Photoshop 2026", s: 2800000000, t: "dir", b: "review", cmd: null, note: "uninstall via Creative Cloud", c: null },
+      { n: "Logic Pro.app", p: "/System/Volumes/Data/Applications/Logic Pro.app", s: 1700000000, t: "dir", b: "review", cmd: null, note: "reinstallable from the App Store", c: null },
+      { n: "(other, 58 items)", p: "/System/Volumes/Data/Applications", s: 1800000000, t: "dir", b: null, cmd: null, note: null, c: null }
+    ]},
+    { n: "Library", p: "/System/Volumes/Data/Library", s: 14200000000, t: "dir", b: null, cmd: null, note: null, c: [
+      { n: "Developer", p: "/System/Volumes/Data/Library/Developer", s: 6800000000, t: "dir", b: "review", cmd: null, note: "Command Line Tools — needed for compilers and git", c: null },
+      { n: "Application Support", p: "/System/Volumes/Data/Library/Application Support", s: 3200000000, t: "dir", b: "review", cmd: null, note: "system-wide app data", c: null },
+      { n: "Caches", p: "/System/Volumes/Data/Library/Caches", s: 3100000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/Library/Caches'", note: "system-wide caches, regenerate (needs sudo)", c: null },
+      { n: "(other, 44 items)", p: "/System/Volumes/Data/Library", s: 1100000000, t: "dir", b: null, cmd: null, note: null, c: null }
+    ]},
+    { n: "private", p: "/System/Volumes/Data/private", s: 9800000000, t: "dir", b: null, cmd: null, note: null, c: [
+      { n: "var", p: "/System/Volumes/Data/private/var", s: 9100000000, t: "dir", b: null, cmd: null, note: null, c: [
+        { n: "vm", p: "/System/Volumes/Data/private/var/vm", s: 4300000000, t: "dir", b: "never", cmd: null, note: "swap files — managed by macOS, do not touch", c: null },
+        { n: "folders", p: "/System/Volumes/Data/private/var/folders", s: 2200000000, t: "dir", b: "review", cmd: null, note: "per-user temp/caches — macOS cleans these; reboot clears most", c: null },
+        { n: "log", p: "/System/Volumes/Data/private/var/log", s: 1200000000, t: "dir", b: "review", cmd: null, note: "system logs — mostly rotated automatically", c: null },
+        { n: "db", p: "/System/Volumes/Data/private/var/db", s: 900000000, t: "unreadable", b: null, cmd: null, note: "permission blocked — size from parent estimate", c: null },
+        { n: "(other, 28 items)", p: "/System/Volumes/Data/private/var", s: 500000000, t: "dir", b: null, cmd: null, note: null, c: null }
+      ]},
+      { n: "tmp", p: "/System/Volumes/Data/private/tmp", s: 700000000, t: "dir", b: "safe", cmd: "rm -rf '/System/Volumes/Data/private/tmp'", note: "temp files, cleared on reboot anyway", c: null }
+    ]},
+    { n: "usr", p: "/System/Volumes/Data/usr", s: 2300000000, t: "dir", b: null, cmd: null, note: null, c: [
+      { n: "local", p: "/System/Volumes/Data/usr/local", s: 2300000000, t: "dir", b: "review", cmd: null, note: "Homebrew and manually installed tools", c: null }
+    ]},
+    { n: "opt", p: "/System/Volumes/Data/opt", s: 1900000000, t: "dir", b: "review", cmd: null, note: "Homebrew (Apple Silicon) — manage with `brew cleanup`", c: null },
+    { n: ".Spotlight-V100", p: "/System/Volumes/Data/.Spotlight-V100", s: 0, t: "unreadable", b: null, cmd: null, note: "Spotlight index — permission blocked, size unknown", c: null },
+    { n: ".DocumentRevisions-V100", p: "/System/Volumes/Data/.DocumentRevisions-V100", s: 0, t: "unreadable", b: null, cmd: null, note: "document version store — permission blocked, size unknown", c: null },
+    { n: "(other, 19 items)", p: "/System/Volumes/Data", s: 800000000, t: "dir", b: null, cmd: null, note: null, c: null }
+  ]}
+};
+</script>
+<!-- STORAGESAVER_DATA_END -->
+
+<div id="root">
+<header>
+  <div class="brand">
+    <h1>StorageSaver</h1>
+    <span class="ts" id="scanTs"></span>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div class="spacer"></div>
+  <div class="search">
+    <span class="icon">⌕</span>
+    <input id="searchBox" type="search" placeholder="Filter paths… (Enter jumps to biggest match)" autocomplete="off" spellcheck="false">
+  </div>
+  <button class="themeBtn" id="themeBtn" title="Cycle theme: auto → light → dark">◐ auto</button>
+  <div class="annotateWrap">
+    <button class="annotateBtn" id="annotateBtn" title="Fill in missing notes with a local or remote LLM">⚙️ Annotate</button>
+    <div id="annotatePanel">
+      <p class="apIntro">Fills the empty tooltips: an AI model writes a one-line plain-English explanation of each big folder (what it is, whether it matters). Runs against a local model (free, private) or a cloud API.</p>
+      <div class="apRow">
+        <label for="apPreset">Provider preset</label>
+        <select id="apPreset">
+          <option value="ollama">Ollama (local)</option>
+          <option value="lmstudio">LM Studio (local)</option>
+          <option value="openai">OpenAI</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="custom" selected>Custom</option>
+        </select>
+      </div>
+      <div class="apRow">
+        <label for="apEndpoint">Endpoint URL</label>
+        <input id="apEndpoint" type="text" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false">
+        <span class="apHint">The endpoint is always required, it tells the page where to send requests. Presets fill it in for you. Local models need no key; cloud providers do.</span>
+      </div>
+      <div class="apRow">
+        <label for="apModel">Model</label>
+        <input id="apModel" type="text" placeholder="qwen2.5-coder:32b" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="apRow">
+        <label for="apKey">API key</label>
+        <input id="apKey" type="password" placeholder="optional" autocomplete="off" spellcheck="false">
+        <span class="apHint" id="apKeyHint">leave blank for local models</span>
+      </div>
+      <button class="apGo" id="apGoBtn">Annotate my map</button>
+      <div class="apStatus" id="apStatus"></div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="pane" id="sunPane">
+    <nav class="crumbs" id="crumbs"></nav>
+    <div id="sunWrap">
+      <svg id="sun" viewBox="0 0 640 640" role="img" aria-label="Disk usage sunburst">
+        <defs>
+          <pattern id="hatch" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)">
+            <rect width="7" height="7" fill="rgba(128,128,140,.14)"></rect>
+            <line x1="0" y1="0" x2="0" y2="7" stroke="rgba(128,128,140,.55)" stroke-width="2.5"></line>
+          </pattern>
+        </defs>
+        <g id="rings"></g>
+        <g id="centerG">
+          <circle id="centerCircle" cx="320" cy="320" r="92"></circle>
+          <text id="centerName" x="320" y="308" text-anchor="middle"></text>
+          <text id="centerSize" x="320" y="330" text-anchor="middle"></text>
+          <text id="centerPct" x="320" y="348" text-anchor="middle"></text>
+          <text id="centerHint" x="320" y="366" text-anchor="middle"></text>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <section class="pane" id="treePane">
+    <div class="treeHead">
+      <span class="thName">Name</span>
+      <span class="thBar">% of parent</span>
+      <span class="thPct"></span>
+      <span class="thSize">Size</span>
+    </div>
+    <div id="tree" tabindex="0"></div>
+    <div class="hint"><kbd>↑</kbd><kbd>↓</kbd> walk · <kbd>→</kbd> expand · <kbd>←</kbd> collapse · <kbd>⌫</kbd> zoom out · <kbd>/</kbd> search</div>
+  </section>
+</main>
+
+<div id="tip"></div>
+<div id="toast"></div>
+</div>
+
+<script>
+(function(){
+"use strict";
+/* ================================================================
+   StorageSaver — vanilla JS, no external resources.
+   Data comes from window.STORAGESAVER_DATA (see STORAGESAVER_DATA_START block).
+   ================================================================ */
+
+var DATA = window.STORAGESAVER_DATA;
+var ROOT = DATA.root;
+var $ = function(s){ return document.querySelector(s); };
+
+/* ---------- annotate tree: ids, parents, depth ---------- */
+var uid = 0, byId = {};
+(function walk(n, parent, depth){
+  n._id = ++uid; n._p = parent; n._d = depth;
+  byId[n._id] = n;
+  if (n.c) for (var i = 0; i < n.c.length; i++) walk(n.c[i], n, depth + 1);
+})(ROOT, null, 0);
+
+/* ---------- helpers ---------- */
+function fmt(b){
+  if (b == null) return "—";
+  if (b === 0) return "0 B";
+  var u = ["B","KB","MB","GB","TB"], i = 0, v = b;
+  while (v >= 1000 && i < u.length - 1){ v /= 1000; i++; }
+  return (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(1)) + " " + u[i];
+}
+function pct(x){ return (x * 100 >= 10 ? (x * 100).toFixed(0) : (x * 100).toFixed(1)) + "%"; }
+function isDir(n){ return n.t === "dir" && n.c && n.c.length > 0; }
+function esc(s){ return String(s).replace(/[&<>"]/g, function(ch){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]; }); }
+function ancestors(n){ var a = []; var x = n._p; while (x){ a.unshift(x); x = x._p; } return a; }
+
+/* top-level branch (child of ROOT) that contains n — drives base hue */
+var HUES = [214, 158, 32, 268, 12, 190, 96, 322, 52, 240];
+function topBranchIndex(n){
+  var x = n;
+  while (x._p && x._p !== ROOT) x = x._p;
+  if (!x._p) return 0;
+  return ROOT.c.indexOf(x);
+}
+function sliceColor(n, ring){
+  if (n.t === "unreadable") return "url(#hatch)";
+  var L = [58, 65, 72][Math.min(ring - 1, 2)];
+  if (n.b === "safe")   return "hsl(145 48% " + (L - 6) + "%)";
+  if (n.b === "review") return "hsl(40 72% "  + (L - 4) + "%)";
+  if (n.b === "never")  return "hsl(4 62% "   + (L - 2) + "%)";
+  var h = HUES[Math.max(0, topBranchIndex(n)) % HUES.length];
+  return "hsl(" + h + " 52% " + L + "%)";
+}
+
+/* ---------- header ---------- */
+(function initHeader(){
+  var d = new Date(DATA.generatedAt);
+  $("#scanTs").textContent = "scanned " + d.toLocaleString();
+  var s = DATA.disk;
+  var rows = [
+    ["Total", fmt(s.totalBytes)],
+    ["Used", fmt(s.usedBytes)],
+    ["Free", fmt(s.freeBytes)],
+    ["% used", (s.percentUsed != null ? s.percentUsed : (s.usedBytes / s.totalBytes * 100)).toFixed ? (typeof s.percentUsed === "number" ? s.percentUsed.toFixed(1) : (s.usedBytes/s.totalBytes*100).toFixed(1)) + "%" : "—"],
+    ["Shown in this map", fmt(ROOT.s) + " (" + pct(ROOT.s / s.usedBytes) + " of used)"]
+  ];
+  var el = $("#stats");
+  for (var i = 0; i < rows.length; i++){
+    var div = document.createElement("div");
+    div.className = "stat";
+    div.innerHTML = '<span class="k">' + rows[i][0] + '</span><span class="v">' + esc(rows[i][1]) + '</span>';
+    el.appendChild(div);
+  }
+})();
+
+/* ================================================================
+   STATE
+   ================================================================ */
+var zoomRoot = ROOT;
+var selected = ROOT;
+var searchQ = "";
+var relevantSet = null;   // Set of node ids relevant to current search (matches + ancestors)
+var sliceEls = {};        // nodeId -> current <path> in sunburst
+
+/* ================================================================
+   SUNBURST
+   ================================================================ */
+var CX = 320, CY = 320;
+var R_CENTER = 92, RING_W = 68, RING_GAP = 6, R0 = 100;
+var TAU = Math.PI * 2;
+
+function ringRadii(ring){ // ring: 1..3
+  var r0 = R0 + (ring - 1) * (RING_W + RING_GAP);
+  return [r0, r0 + RING_W];
+}
+function arcPath(r0, r1, a0, a1){
+  var span = a1 - a0;
+  var pad = Math.min(0.006, span / 6);
+  a0 += pad; a1 -= pad;
+  if (a1 - a0 < 0.0025) a1 = a0 + 0.0025;
+  if (a1 - a0 > TAU - 0.004) a1 = a0 + TAU - 0.004;
+  var large = (a1 - a0) > Math.PI ? 1 : 0;
+  function P(r, a){ return (CX + r * Math.cos(a)).toFixed(2) + " " + (CY + r * Math.sin(a)).toFixed(2); }
+  return "M" + P(r0, a0) +
+    " A" + r0 + " " + r0 + " 0 " + large + " 1 " + P(r0, a1) +
+    " L" + P(r1, a1) +
+    " A" + r1 + " " + r1 + " 0 " + large + " 0 " + P(r1, a0) + " Z";
+}
+
+/* layout: max 3 rings below zoomRoot; merge slices < 0.5% of view */
+function layoutSlices(){
+  var slices = [];
+  var minFrac = 0.005;
+  function rec(node, a0, a1, ring){
+    if (ring > 3 || !node.c || !node.c.length) return;
+    var denom = node.s || 1;
+    var span = a1 - a0, a = a0;
+    var small = [], smallSize = 0;
+    for (var i = 0; i < node.c.length; i++){
+      var k = node.c[i];
+      if (k.s <= 0 && k.t !== "unreadable") continue;
+      var frac = (k.s || 0) / denom;
+      var viewFrac = (k.s || 0) / (zoomRoot.s || 1);
+      if (viewFrac < minFrac && k.t !== "unreadable"){ small.push(k); smallSize += (k.s || 0); continue; }
+      var ang = span * frac;
+      if (k.t === "unreadable" && ang < 0.02) ang = 0.02; // sliver so it's visible
+      slices.push({ node: k, a0: a, a1: a + ang, ring: ring });
+      rec(k, a, a + ang, ring + 1);
+      a += ang;
+    }
+    if (smallSize > 0){
+      var ang2 = span * smallSize / denom;
+      slices.push({ merged: small, parent: node, size: smallSize, a0: a, a1: a + ang2, ring: ring });
+    }
+  }
+  rec(zoomRoot, -Math.PI / 2, Math.PI * 1.5, 1);
+  return slices;
+}
+
+function truncName(s, max){ return s.length > max ? s.slice(0, max - 1) + "…" : s; }
+
+function renderSunburst(){
+  var g = $("#rings");
+  g.innerHTML = "";
+  sliceEls = {};
+  var slices = layoutSlices();
+  var ns = "http://www.w3.org/2000/svg";
+  slices.forEach(function(sl){
+    var rr = ringRadii(sl.ring);
+    var p = document.createElementNS(ns, "path");
+    p.setAttribute("d", arcPath(rr[0], rr[1], sl.a0, sl.a1));
+    if (sl.merged){
+      p.setAttribute("fill", "hsl(220 6% 62% / .5)");
+      p.setAttribute("class", "slice smallmerge");
+    } else {
+      p.setAttribute("fill", sliceColor(sl.node, sl.ring));
+      p.setAttribute("class", "slice");
+      p.dataset.id = sl.node._id;
+      sliceEls[sl.node._id] = p;
+    }
+    if (searchQ && relevantSet){
+      var ok = sl.node && relevantSet.has(sl.node._id);
+      if (!ok) p.classList.add("dim");
+    }
+    p.addEventListener("mouseenter", function(ev){ onSliceEnter(sl, ev); });
+    p.addEventListener("mousemove", moveTip);
+    p.addEventListener("mouseleave", function(){ onSliceLeave(sl); });
+    p.addEventListener("click", function(){ onSliceClick(sl); });
+    g.appendChild(p);
+  });
+  // center
+  $("#centerName").textContent = truncName(zoomRoot.n, 14);
+  $("#centerSize").textContent = fmt(zoomRoot.s);
+  $("#centerPct").textContent = pct(zoomRoot.s / DATA.disk.totalBytes) + " of disk";
+  $("#centerHint").textContent = zoomRoot === ROOT ? "" : "click to zoom out";
+  // retrigger zoom animation
+  g.classList.remove("pop");
+  void g.getBoundingClientRect();
+  g.classList.add("pop");
+  renderCrumbs();
+}
+
+function renderCrumbs(){
+  var el = $("#crumbs");
+  el.innerHTML = "";
+  var chain = ancestors(zoomRoot).concat([zoomRoot]);
+  chain.forEach(function(n, i){
+    if (i > 0){
+      var sep = document.createElement("span");
+      sep.className = "crumbSep"; sep.textContent = "›";
+      el.appendChild(sep);
+    }
+    var b = document.createElement("button");
+    b.className = "crumb" + (n === zoomRoot ? " cur" : "");
+    b.textContent = n === ROOT ? ROOT.p : n.n;
+    b.title = n.p;
+    if (n !== zoomRoot) b.addEventListener("click", function(){ zoomTo(n); });
+    el.appendChild(b);
+  });
+}
+
+function zoomTo(node){
+  if (!isDir(node)) node = node._p || ROOT;
+  if (node === zoomRoot){ renderSunburst(); return; }
+  zoomRoot = node;
+  renderSunburst();
+  revealInTree(node, true);
+  setSelected(node, false);
+}
+
+$("#centerG").addEventListener("click", function(){
+  if (zoomRoot._p) zoomTo(zoomRoot._p);
+});
+
+function onSliceClick(sl){
+  if (sl.merged) return;
+  var n = sl.node;
+  if (isDir(n)) zoomTo(n);
+  else { revealInTree(n, false); setSelected(n, false); }
+}
+
+/* ---------- tooltip ---------- */
+var tip = $("#tip");
+function showTipFor(node, mergedInfo){
+  var html;
+  if (mergedInfo){
+    html = '<div class="tpath">' + mergedInfo.count + ' small items in ' + esc(mergedInfo.parent.n) + '</div>' +
+      '<div class="tmeta">' + fmt(mergedInfo.size) + ' · ' + pct(mergedInfo.size / mergedInfo.parent.s) + ' of parent · each &lt; 0.5% of view</div>';
+  } else {
+    var pOfParent = node._p ? pct(node.s / node._p.s) : "100%";
+    html = '<div class="tpath">' + esc(node.p) + '</div>' +
+      '<div class="tmeta">' + (node.t === "unreadable" && !node.s ? "size unknown" : fmt(node.s)) +
+      ' · ' + pOfParent + ' of parent · ' + pct(node.s / DATA.disk.totalBytes) + ' of disk</div>';
+    if (node.t === "unreadable") html += '<div class="tnote review">not scanned (permission blocked)</div>';
+    if (node.note) html += '<div class="tnote ' + (node.b || "") + '">' + esc(node.note) + '</div>';
+  }
+  tip.innerHTML = html;
+  tip.style.display = "block";
+}
+function moveTip(ev){
+  var x = ev.clientX + 14, y = ev.clientY + 14;
+  var w = tip.offsetWidth, h = tip.offsetHeight;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - 12;
+  if (y + h > innerHeight - 8) y = ev.clientY - h - 12;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTip(){ tip.style.display = "none"; }
+
+function onSliceEnter(sl, ev){
+  if (sl.merged) showTipFor(null, { count: sl.merged.length, size: sl.size, parent: sl.parent });
+  else {
+    showTipFor(sl.node);
+    var row = sl.node._row;
+    if (row) row.classList.add("sel-soft"), row.style.outline = "1.5px solid var(--accent)";
+  }
+  moveTip(ev);
+}
+function onSliceLeave(sl){
+  hideTip();
+  if (!sl.merged && sl.node._row) sl.node._row.style.outline = "";
+}
+
+/* ================================================================
+   TREE
+   ================================================================ */
+var tree = $("#tree");
+var CHUNK = 400;
+
+function makeRow(node){
+  var row = document.createElement("div");
+  row.className = "row";
+  row.dataset.id = node._id;
+  if (node.b) row.classList.add("b-" + node.b);
+  if (node.t === "unreadable") row.classList.add("unreadable");
+  row.style.paddingLeft = (4 + (node._d) * 16) + "px";
+
+  var tw = document.createElement("span");
+  tw.className = "tw" + (isDir(node) ? "" : " leaf");
+  tw.textContent = "▶";
+  row.appendChild(tw);
+
+  var name = document.createElement("span");
+  name.className = "nname";
+  var ico = node.t === "file" ? "▤" : node.t === "unreadable" ? "⊘" : "▸";
+  name.innerHTML = '<span class="fico">' + (node.t === "file" ? "▤" : node.t === "unreadable" ? "⊘" : "📁").replace("📁","▣") + '</span><span>' + esc(node.n) + '</span>';
+  if (node.note) name.title = node.note; else name.title = node.p;
+  row.appendChild(name);
+
+  if (node.t === "unreadable"){
+    var uc = document.createElement("span");
+    uc.className = "chip unread"; uc.textContent = "not scanned";
+    row.appendChild(uc);
+  } else if (node.b){
+    var chip = document.createElement("span");
+    chip.className = "chip " + node.b;
+    chip.textContent = node.b;
+    if (node.note) chip.title = node.note;
+    row.appendChild(chip);
+  }
+  if (node.b === "safe" && node.cmd){
+    var cb = document.createElement("button");
+    cb.className = "copyBtn"; cb.textContent = "⧉";
+    cb.title = "Copy removal command:\n" + node.cmd;
+    cb.addEventListener("click", function(ev){
+      ev.stopPropagation();
+      copyText(node.cmd);
+    });
+    row.appendChild(cb);
+  }
+
+  var frac = node._p ? (node.s || 0) / (node._p.s || 1) : 1;
+  var bar = document.createElement("span");
+  bar.className = "bar";
+  bar.innerHTML = '<i style="width:' + Math.max(0.8, frac * 100).toFixed(2) + '%"></i>';
+  row.appendChild(bar);
+
+  var pl = document.createElement("span");
+  pl.className = "pctL";
+  pl.textContent = node.t === "unreadable" && !node.s ? "?" : pct(frac);
+  row.appendChild(pl);
+
+  var sz = document.createElement("span");
+  sz.className = "sizeL";
+  sz.textContent = node.t === "unreadable" && !node.s ? "—" : fmt(node.s);
+  row.appendChild(sz);
+
+  row.addEventListener("mouseenter", function(ev){
+    var el = sliceEls[node._id];
+    if (el) el.classList.add("hl");
+    showTipFor(node); moveTip(ev);
+  });
+  row.addEventListener("mousemove", moveTip);
+  row.addEventListener("mouseleave", function(){
+    var el = sliceEls[node._id];
+    if (el) el.classList.remove("hl");
+    hideTip();
+  });
+  row.addEventListener("click", function(ev){
+    setSelected(node, false);
+    if (ev.target === tw){ toggleExpand(node); return; }
+    if (isDir(node)) { toggleExpand(node, true); zoomTo(node); }
+  });
+
+  node._row = row;
+  node._tw = tw;
+  return row;
+}
+
+function buildNodeEl(node){
+  var wrap = document.createElement("div");
+  wrap.className = "node";
+  wrap.appendChild(makeRow(node));
+  node._wrap = wrap;
+  return wrap;
+}
+
+function ensureKids(node){
+  if (!isDir(node) || node._kidsEl) return;
+  var kids = document.createElement("div");
+  kids.className = "kids closed";
+  node._kidsEl = kids;
+  node._rendered = 0;
+  renderChunk(node);
+  node._wrap.appendChild(kids);
+}
+function renderChunk(node){
+  var kids = node._kidsEl;
+  var list = node.c;
+  var end = Math.min(list.length, node._rendered + CHUNK);
+  var frag = document.createDocumentFragment();
+  for (var i = node._rendered; i < end; i++) frag.appendChild(buildNodeEl(list[i]));
+  // remove old "more" row
+  if (node._moreEl){ node._moreEl.remove(); node._moreEl = null; }
+  kids.appendChild(frag);
+  node._rendered = end;
+  if (end < list.length){
+    var more = document.createElement("div");
+    more.className = "moreRow";
+    more.style.paddingLeft = (4 + (node._d + 1) * 16 + 18) + "px";
+    more.textContent = "Show " + Math.min(CHUNK, list.length - end) + " more of " + (list.length - end) + "…";
+    more.addEventListener("click", function(){ renderChunk(node); });
+    node._moreEl = more;
+    kids.appendChild(more);
+  }
+}
+function setExpanded(node, open){
+  if (!isDir(node)) return;
+  ensureKids(node);
+  node._open = open;
+  node._kidsEl.classList.toggle("closed", !open);
+  node._tw.classList.toggle("open", open);
+}
+function toggleExpand(node, forceOpen){
+  if (!isDir(node)) return;
+  setExpanded(node, forceOpen === true ? true : !node._open);
+}
+
+function scrollRowIntoView(node){
+  var row = node._row;
+  if (!row) return;
+  var rTop = row.getBoundingClientRect().top - tree.getBoundingClientRect().top + tree.scrollTop;
+  var target = rTop - tree.clientHeight / 2 + 20;
+  tree.scrollTop = Math.max(0, target);
+}
+
+function revealInTree(node, expandSelf){
+  var chain = ancestors(node);
+  for (var i = 0; i < chain.length; i++) setExpanded(chain[i], true);
+  if (expandSelf && isDir(node)) setExpanded(node, true);
+  if (!node._row){
+    // node may be beyond a chunk boundary — render chunks until present
+    var p = node._p;
+    if (p && p._kidsEl){
+      var guard = 0;
+      while (!node._row && p._rendered < p.c.length && guard++ < 200) renderChunk(p);
+    }
+  }
+  if (node._row) scrollRowIntoView(node);
+}
+
+function setSelected(node, alsoZoom){
+  if (selected && selected._row) selected._row.classList.remove("sel");
+  selected = node;
+  if (node._row) node._row.classList.add("sel");
+  if (alsoZoom && isDir(node)) zoomTo(node);
+}
+
+/* initial tree: root expanded one level */
+tree.appendChild(buildNodeEl(ROOT));
+setExpanded(ROOT, true);
+setSelected(ROOT, false);
+
+/* ================================================================
+   SEARCH
+   ================================================================ */
+var searchBox = $("#searchBox");
+var searchTimer = null;
+var matchesSorted = [];
+
+function computeSearch(q){
+  searchQ = q;
+  matchesSorted = [];
+  if (!q){
+    relevantSet = null;
+    // unhide everything
+    var hidden = tree.querySelectorAll(".row.hiddenBySearch");
+    for (var i = 0; i < hidden.length; i++) hidden[i].classList.remove("hiddenBySearch");
+    // undim slices
+    Object.keys(sliceEls).forEach(function(id){ sliceEls[id].classList.remove("dim"); });
+    var dims = $("#rings").querySelectorAll(".slice.dim");
+    for (var j = 0; j < dims.length; j++) dims[j].classList.remove("dim");
+    return;
+  }
+  var needle = q.toLowerCase();
+  relevantSet = new Set();
+  var matches = [];
+  (function walk(n){
+    var hit = n.p.toLowerCase().indexOf(needle) !== -1 || n.n.toLowerCase().indexOf(needle) !== -1;
+    var childHit = false;
+    if (n.c) for (var i = 0; i < n.c.length; i++) if (walk(n.c[i])) childHit = true;
+    if (hit) matches.push(n);
+    if (hit || childHit){ relevantSet.add(n._id); return true; }
+    return false;
+  })(ROOT);
+  matchesSorted = matches.sort(function(a, b){ return (b.s || 0) - (a.s || 0); });
+
+  // expand ancestors of top matches so their rows exist
+  var toReveal = matchesSorted.slice(0, 200);
+  toReveal.forEach(function(n){
+    var chain = ancestors(n);
+    for (var i = 0; i < chain.length; i++) setExpanded(chain[i], true);
+  });
+
+  // hide irrelevant rows
+  var rows = tree.querySelectorAll(".row");
+  for (var r = 0; r < rows.length; r++){
+    var id = +rows[r].dataset.id;
+    rows[r].classList.toggle("hiddenBySearch", !relevantSet.has(id));
+  }
+  // dim non-relevant slices
+  var slicePaths = $("#rings").querySelectorAll(".slice");
+  for (var s = 0; s < slicePaths.length; s++){
+    var sid = slicePaths[s].dataset.id;
+    slicePaths[s].classList.toggle("dim", !(sid && relevantSet.has(+sid)));
+  }
+}
+searchBox.addEventListener("input", function(){
+  clearTimeout(searchTimer);
+  var v = searchBox.value.trim();
+  searchTimer = setTimeout(function(){ computeSearch(v); }, 130);
+});
+searchBox.addEventListener("keydown", function(ev){
+  if (ev.key === "Enter" && matchesSorted.length){
+    var top = matchesSorted[0];
+    zoomTo(isDir(top) ? top : (top._p || ROOT));
+    revealInTree(top, false);
+    setSelected(top, false);
+    ev.preventDefault();
+  }
+  if (ev.key === "Escape"){
+    searchBox.value = ""; computeSearch("");
+    searchBox.blur(); tree.focus();
+  }
+});
+
+/* ================================================================
+   KEYBOARD
+   ================================================================ */
+function visibleRows(){
+  var all = tree.querySelectorAll(".row");
+  var out = [];
+  for (var i = 0; i < all.length; i++){
+    if (all[i].classList.contains("hiddenBySearch")) continue;
+    if (all[i].offsetParent === null) continue; // inside a closed .kids
+    out.push(all[i]);
+  }
+  return out;
+}
+document.addEventListener("keydown", function(ev){
+  var inSearch = document.activeElement === searchBox;
+  if (ev.key === "/" && !inSearch){ ev.preventDefault(); searchBox.focus(); searchBox.select(); return; }
+  if (inSearch) return;
+  var rows, idx;
+  switch (ev.key){
+    case "ArrowDown": case "ArrowUp":
+      rows = visibleRows();
+      idx = rows.indexOf(selected && selected._row);
+      if (idx === -1) idx = 0;
+      else idx += (ev.key === "ArrowDown" ? 1 : -1);
+      idx = Math.max(0, Math.min(rows.length - 1, idx));
+      var n = byId[+rows[idx].dataset.id];
+      setSelected(n, false);
+      scrollRowIntoView(n);
+      ev.preventDefault();
+      break;
+    case "ArrowRight":
+      if (selected && isDir(selected)){
+        if (!selected._open) setExpanded(selected, true);
+        else if (selected.c[0]){ revealInTree(selected.c[0], false); setSelected(selected.c[0], false); }
+      }
+      ev.preventDefault();
+      break;
+    case "ArrowLeft":
+      if (selected){
+        if (isDir(selected) && selected._open) setExpanded(selected, false);
+        else if (selected._p){ setSelected(selected._p, false); scrollRowIntoView(selected); }
+      }
+      ev.preventDefault();
+      break;
+    case "Backspace":
+      if (zoomRoot._p) zoomTo(zoomRoot._p);
+      ev.preventDefault();
+      break;
+    case "Enter":
+      if (selected && isDir(selected)) zoomTo(selected);
+      break;
+  }
+});
+
+/* ================================================================
+   CLIPBOARD + TOAST
+   ================================================================ */
+var toastTimer = null;
+function toast(msg){
+  var t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.classList.remove("show"); }, 2600);
+}
+function copyText(text){
+  function done(){ toast("command copied — review before running"); }
+  function fallback(){
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); done(); }
+    catch (e){ toast("copy failed — command: " + text); }
+    ta.remove();
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done, fallback);
+  } else fallback();
+}
+
+/* ================================================================
+   THEME TOGGLE (auto → light → dark)
+   ================================================================ */
+var themeBtn = $("#themeBtn");
+var themes = ["auto", "light", "dark"];
+var themeIdx = 2; // dark is the default when the user has no stored preference
+try {
+  var savedTheme = localStorage.getItem("storagesaver-theme");
+  if (savedTheme && themes.indexOf(savedTheme) !== -1) themeIdx = themes.indexOf(savedTheme);
+} catch(e){}
+function applyTheme(){
+  var t = themes[themeIdx];
+  if (t === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", t);
+  themeBtn.textContent = (t === "auto" ? "◐" : t === "light" ? "○" : "●") + " " + t;
+  try { localStorage.setItem("storagesaver-theme", t); } catch(e){}
+}
+themeBtn.addEventListener("click", function(){
+  themeIdx = (themeIdx + 1) % themes.length;
+  applyTheme();
+});
+applyTheme();
+
+/* ================================================================
+   ANNOTATE (optional OpenAI-compatible LLM, e.g. local Ollama)
+   Settings live only in localStorage — never written into the page
+   or into STORAGESAVER_DATA.
+   ================================================================ */
+(function(){
+  var LS_KEY = "storagesaver-llm";
+  var ANNOTATE_MIN_BYTES = 100 * 1024 * 1024; // 100MB, matches annotate-notes.js --min-mb default
+  var ANNOTATE_BATCH = 12;
+  var SYSTEM = "You label files and folders found on a personal Mac owned by a software developer and homelab enthusiast.\n" +
+    "For each numbered item, write ONE plain-English sentence (max 22 words) explaining what it is or what app/tool it belongs to.\n" +
+    "Write for a non-expert. No hedging, no \"likely/probably\". If you genuinely do not recognize it, output exactly UNSURE.\n" +
+    "Output format: one line per item, \"<id>\\t<sentence>\". No other text.";
+
+  var wrap = $(".annotateWrap");
+  var btn = $("#annotateBtn");
+  var panel = $("#annotatePanel");
+  var fldPreset = $("#apPreset");
+  var fldEndpoint = $("#apEndpoint");
+  var fldModel = $("#apModel");
+  var fldKey = $("#apKey");
+  var keyHint = $("#apKeyHint");
+  var goBtn = $("#apGoBtn");
+  var statusEl = $("#apStatus");
+
+  /* ---------- provider presets ---------- */
+  var PRESETS = {
+    ollama:   { endpoint: "http://localhost:11434/v1",       model: "qwen2.5-coder:32b",           hint: "no key needed" },
+    lmstudio: { endpoint: "http://localhost:1234/v1",        modelPh: "whatever model is loaded",    hint: "no key needed" },
+    openai:   { endpoint: "https://api.openai.com/v1",       model: "gpt-4o-mini",                 hint: "paste your OpenAI API key" },
+    deepseek: { endpoint: "https://api.deepseek.com/v1",     model: "deepseek-v4-flash",               hint: "paste your DeepSeek API key (cheapest cloud option)" },
+    anthropic:{ endpoint: "https://api.anthropic.com/v1",    model: "claude-haiku-4-5",            hint: "paste your Anthropic API key" }
+    // "custom" intentionally absent — it leaves the fields as-is
+  };
+  function applyPreset(name){
+    var p = PRESETS[name];
+    if (!p) return; // custom: leave fields untouched
+    fldEndpoint.value = p.endpoint;
+    if (p.model) { fldModel.value = p.model; fldModel.placeholder = p.model; }
+    else { fldModel.value = ""; fldModel.placeholder = p.modelPh; }
+    keyHint.textContent = p.hint;
+  }
+  fldPreset.addEventListener("change", function(){
+    applyPreset(fldPreset.value);
+    saveSettings();
+  });
+
+  /* ---------- settings persistence (localStorage only) ---------- */
+  function loadSettings(){
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      var s = JSON.parse(raw);
+      if (s.preset && fldPreset.querySelector('option[value="' + s.preset + '"]')){
+        fldPreset.value = s.preset;
+        applyPreset(s.preset); // restores model placeholder + key hint
+      }
+      if (s.endpoint) fldEndpoint.value = s.endpoint;
+      if (s.model) fldModel.value = s.model;
+      if (s.key) fldKey.value = s.key;
+    } catch(e){}
+  }
+  function saveSettings(){
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        preset: fldPreset.value,
+        endpoint: fldEndpoint.value.trim(),
+        model: fldModel.value.trim(),
+        key: fldKey.value
+      }));
+    } catch(e){}
+  }
+  [fldEndpoint, fldModel, fldKey].forEach(function(f){
+    f.addEventListener("change", saveSettings);
+    f.addEventListener("input", saveSettings);
+  });
+  loadSettings();
+
+  /* ---------- panel toggle ---------- */
+  function closePanel(){
+    panel.classList.remove("open");
+    btn.classList.remove("active");
+  }
+  function openPanel(){
+    panel.classList.add("open");
+    btn.classList.add("active");
+  }
+  btn.addEventListener("click", function(ev){
+    ev.stopPropagation();
+    if (panel.classList.contains("open")) closePanel(); else openPanel();
+  });
+  panel.addEventListener("click", function(ev){ ev.stopPropagation(); });
+  document.addEventListener("click", function(ev){
+    if (!wrap.contains(ev.target)) closePanel();
+  });
+  document.addEventListener("keydown", function(ev){
+    if (ev.key === "Escape" && panel.classList.contains("open")) closePanel();
+  });
+
+  /* ---------- status line ---------- */
+  function setStatus(html){ statusEl.innerHTML = html; }
+  function setStatusText(text){ statusEl.textContent = text; }
+
+  /* ---------- collect nodes needing notes ---------- */
+  function gb(b){ return b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : Math.round(b / 1e6) + " MB"; }
+  function collectAnnotationWork(){
+    var seen = new Map();     // lowercased name -> sample {name,path,size,parent,type}
+    var allByKey = new Map(); // lowercased name -> [nodes] (every instance, for applying results)
+    (function walk(n){
+      var key = n.n.toLowerCase();
+      if (!allByKey.has(key)) allByKey.set(key, []);
+      allByKey.get(key).push(n);
+      if (!n.note && n.n.indexOf("(other") !== 0 && (n.s || 0) >= ANNOTATE_MIN_BYTES && !seen.has(key)){
+        seen.set(key, { name: n.n, path: n.p, size: n.s, parent: n._p ? n._p.n : "", type: n.t });
+      }
+      if (n.c) for (var i = 0; i < n.c.length; i++) walk(n.c[i]);
+    })(ROOT);
+    return { work: Array.from(seen.values()), allByKey: allByKey };
+  }
+
+  /* ---------- reflect a new note in the already-rendered tree row ---------- */
+  function refreshNodeNoteUI(n){
+    if (n._row){
+      var nameEl = n._row.querySelector(".nname");
+      if (nameEl) nameEl.title = n.note || n.p;
+    }
+    // sunburst/tree tooltips (showTipFor) read node.note live at hover time,
+    // so no further action is needed there.
+  }
+
+  /* ---------- one batch round-trip ---------- */
+  async function askBatch(items, endpoint, model, key){
+    var lines = items.map(function(w, i){
+      return i + ". name: \"" + w.name + "\" | inside: \"" + w.parent + "\" | path: " + w.path +
+        " | size: " + gb(w.size) + " | " + w.type;
+    });
+    var base = endpoint.replace(/\/+$/, "");
+    var url = base + "/chat/completions";
+    var headers = { "Content-Type": "application/json" };
+    if (key) headers["Authorization"] = "Bearer " + key;
+    if (/^https:\/\/api\.anthropic\.com(\/|$)/.test(base)){
+      // Anthropic's OpenAI-compat layer: version header + explicit opt-in
+      // required for direct browser (CORS) access.
+      headers["anthropic-version"] = "2023-06-01";
+      headers["anthropic-dangerous-direct-browser-access"] = "true";
+    }
+    var res = await fetch(url, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({
+        model: model, temperature: 0.2,
+        messages: [{ role: "system", content: SYSTEM }, { role: "user", content: lines.join("\n") }]
+      })
+    });
+    if (!res.ok){
+      var bodyText = "";
+      try { bodyText = await res.text(); } catch(e){}
+      var err = new Error("Endpoint returned " + res.status + ": " + bodyText.slice(0, 100));
+      err.isHttp = true;
+      throw err;
+    }
+    var json = await res.json();
+    var content = json.choices[0].message.content;
+    var answers = new Map();
+    content.split("\n").forEach(function(line){
+      var mm = line.match(/^\s*(\d+)[.\t:]?\s*[\t]?\s*(.+)$/);
+      if (mm) answers.set(parseInt(mm[1], 10), mm[2].trim());
+    });
+    return answers;
+  }
+
+  /* ---------- main click handler ---------- */
+  var running = false;
+  async function runAnnotate(){
+    if (running) return;
+    var endpoint = fldEndpoint.value.trim();
+    var model = fldModel.value.trim() || "qwen2.5-coder:32b";
+    var key = fldKey.value.trim();
+    if (!endpoint){ setStatusText("Enter an endpoint URL first."); return; }
+    saveSettings();
+
+    var collected = collectAnnotationWork();
+    var work = collected.work;
+    var allByKey = collected.allByKey;
+    if (!work.length){ setStatusText("Nothing to annotate — every item ≥100MB already has a note."); return; }
+
+    running = true;
+    goBtn.disabled = true;
+    var appliedCount = 0;
+    setStatusText("0/" + work.length + " annotated…");
+
+    for (var i = 0; i < work.length; i += ANNOTATE_BATCH){
+      var batch = work.slice(i, i + ANNOTATE_BATCH);
+      var answers;
+      try {
+        answers = await askBatch(batch, endpoint, model, key);
+      } catch(e){
+        if (e.isHttp){
+          setStatusText(e.message);
+        } else {
+          setStatus(
+            "Couldn't reach the endpoint from the browser. For Ollama run: " +
+            "<code>launchctl setenv OLLAMA_ORIGINS '*'</code> (or <code>OLLAMA_ORIGINS=* ollama serve</code>), " +
+            "or use the CLI instead: <code>storagesaver annotate</code>"
+          );
+        }
+        running = false;
+        goBtn.disabled = false;
+        return;
+      }
+      batch.forEach(function(w, j){
+        var a = answers.get(j);
+        if (!a || /^UNSURE\b/i.test(a)) return;
+        var text = a.replace(/\s+/g, " ").slice(0, 160);
+        var nodes = allByKey.get(w.name.toLowerCase()) || [];
+        nodes.forEach(function(n){
+          if (!n.note){
+            n.note = text;
+            appliedCount++;
+            refreshNodeNoteUI(n);
+          }
+        });
+      });
+      setStatusText(Math.min(i + ANNOTATE_BATCH, work.length) + "/" + work.length + " annotated…");
+    }
+
+    running = false;
+    goBtn.disabled = false;
+    setStatusText(appliedCount + " note" + (appliedCount === 1 ? "" : "s") + " added. Hover items to see them.");
+  }
+  goBtn.addEventListener("click", runAnnotate);
+})();
+
+/* ---------- go ---------- */
+renderSunburst();
+})();
+</script>
+</body>
+</html>
+
